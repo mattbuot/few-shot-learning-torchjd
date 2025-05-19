@@ -1,0 +1,13 @@
+[project]
+name = "few-shot-learning-torchjd"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "secprint>=0.1.0",
+    "tensorboard>=2.19.0",
+    "torch>=2.7.0",
+    "torchjd>=0.6.0",
+    "torchvision>=0.22.0",
+]
