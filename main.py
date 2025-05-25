@@ -1,17 +1,20 @@
-import torch
-from few_shot_learning_torchjd import MNISTClassifier
-from torchvision.datasets import MNIST
-from torchvision import transforms
-from torch.utils.data import Subset
-from secprint import SectionPrinter as Spt
-import random
-from torchjd import backward
-from torchjd.aggregation import UPGrad, Mean
-from torch.utils.tensorboard import SummaryWriter
 import os
-from torch.nn.functional import cosine_similarity
+import random
 import typing as T
 from datetime import datetime
+
+import torch
+from secprint import SectionPrinter as Spt
+from torch.nn.functional import cosine_similarity
+from torch.utils.data import Subset
+from torch.utils.tensorboard import SummaryWriter
+from torchjd import backward
+from torchjd.aggregation import Mean, UPGrad
+from torchvision import transforms
+from torchvision.datasets import MNIST
+
+from few_shot_learning_torchjd import MNISTClassifier
+from few_shot_learning_torchjd.model import JointMNISTClassifier
 
 Spt.set_automatic_skip(True)
 
@@ -39,11 +42,11 @@ def main():
     N_TRAINING_SAMPLES = 20
     USE_JD = [
               False,
-              True,
+              #True,
               ]
     LEARNING_RATE = [
-        0.01, 
-        0.02, 
+        0.1, 
+        #0.02, 
         #0.03, 
         #0.04, 
         #0.05
@@ -53,8 +56,8 @@ def main():
     for use_jd in USE_JD:
         for learning_rate in LEARNING_RATE:
             i += 1
-            if i == 1:
-                continue
+            # if i == 1:
+            #     continue
             Spt.print(f"Running experiment with use_jd={use_jd} and learning_rate={learning_rate}")
             run_experiment(
                 n_epochs=N_EPOCHS,
@@ -75,12 +78,12 @@ def run_experiment(
         ) -> None:
     """Runs the experiment with the given parameters."""
 
-    model = MNISTClassifier()
+    model = JointMNISTClassifier(init_mode="zeros") #MNISTClassifier()
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-    criterion = torch.nn.CrossEntropyLoss(reduction="none")
+    criterion = torch.nn.MSELoss(reduction="none") #torch.nn.CrossEntropyLoss(reduction="none")
     aggregator = UPGrad() if use_jd else Mean()
 
-    experiment_name = f"{'jd' if use_jd else 'classic'}_{n_training_samples}samples_{learning_rate}lr_{datetime.now().strftime('%m%d_%H%M%S')}"
+    experiment_name = f"JOINT_{'jd' if use_jd else 'classic'}_{n_training_samples}samples_{learning_rate}lr_{datetime.now().strftime('%m%d_%H%M%S')}"
     log_dir = os.path.join("runs", experiment_name)
     writer = SummaryWriter(log_dir=log_dir)
     aggregator.register_forward_hook(log_cosine_similarity(writer=writer))
@@ -114,7 +117,7 @@ def run_experiment(
         num_workers=4,
     )
 
-    writer.add_graph(model, next(iter(train_dataloader))[0])
+    # writer.add_graph(model, next(iter(train_dataloader))[0])
 
     for epoch in range(n_epochs):
 
@@ -122,10 +125,12 @@ def run_experiment(
 
             model.train()
             train_loss = 0
-            for batch_idx, (data, target) in enumerate(train_dataloader):
+            for batch_idx, (image, label) in enumerate(train_dataloader):
                 optimizer.zero_grad()
-                output = model(data)
-                losses = criterion(output, target)
+
+                ohe_labels = torch.nn.functional.one_hot(label, num_classes=10).float()
+                output = model((image, ohe_labels))
+                losses = criterion(output, torch.ones_like(output))
                 loss = losses.mean()
                 train_loss += loss.item()
                 backward(tensors=losses,
@@ -133,11 +138,11 @@ def run_experiment(
                 optimizer.step()
 
                 if epoch == 0:
-                    writer.add_images('input/images', data, batch_idx)
+                    writer.add_images('input/images', image, batch_idx)
 
                 if batch_idx % 100 == 0:
-                    Spt.print(f"Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_dataset)}] Loss: {loss.item():.6f}")
-            
+                    Spt.print(f"Train Epoch: {epoch} [{batch_idx * len(image)}/{len(train_dataset)}] Loss: {loss.item():.6f}")
+
             train_loss /= len(train_dataloader)
             writer.add_scalar('Loss/train', train_loss, epoch)
 
@@ -145,18 +150,17 @@ def run_experiment(
             validation_loss = 0
             correct = 0
             with torch.no_grad():
-                for data, target in validation_dataloader:
-                    output = model(data)
-                    batch_losses = criterion(output, target)
-                    validation_loss += batch_losses.mean().item()
-                    pred = output.argmax(dim=1, keepdim=True)
-                    correct += pred.eq(target.view_as(pred)).sum().item()
+                for input in validation_dataloader:
+                    image, target = input
+                    prediction = model.predict(image, n_iterations=1000, learning_rate=0.01)
+
+                    correct += prediction.eq(target.view_as(prediction)).sum().item()
 
             validation_loss /= len(validation_dataloader)
             accuracy = 100. * correct / len(validation_dataset)
             
             writer.add_scalar('Loss/validation', validation_loss, epoch)
-            writer.add_scalar('Accuracy/validation', accuracy, epoch)
+            #writer.add_scalar('Accuracy/validation', accuracy, epoch)
             
             Spt.print(f"Validation set: Average loss: {validation_loss:.4f}, Accuracy: {correct}/{len(validation_dataset)} ({accuracy:.0f}%)")
 
