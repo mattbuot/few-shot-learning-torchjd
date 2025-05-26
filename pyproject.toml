@@ -5,6 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "onnx>=1.18.0",
+    "onnxruntime>=1.22.0",
+    "prettytable>=3.16.0",
     "secprint>=0.1.0",
     "standard-imghdr>=3.13.0",
     "tensorboard>=2.19.0",
