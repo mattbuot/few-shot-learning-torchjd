@@ -1,5 +1,3 @@
-from shlex import join
-
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -13,7 +11,7 @@ class MNISTClassifier(nn.Module):
         self.fc1 = nn.Linear(64 * 7 * 7, 128)
         self.fc2 = nn.Linear(128, 10)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.relu(self.conv1(x))
         x = F.max_pool2d(x, kernel_size=2)
         x = F.relu(self.conv2(x))
@@ -31,11 +29,12 @@ class JointMNISTClassifier(nn.Module):
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
         #self.fc1 = nn.Linear(10, 128)
         #self.fc11 = nn.Linear(64, 256)
-        self.fc2 = nn.Linear(64 * 7 * 7 + 10, 256)
+        self.fc2 = nn.Linear(64 * 7 * 7, 128)
         self.fcmu = nn.Linear(256, 32)
         self.fclogvar = nn.Linear(256, 32)
-        self.fc4 = nn.Linear(32, 256)
+        self.fc4 = nn.Linear(128, 10)
         self.fc5 = nn.Linear(256, 1)
+        self.classifier = MNISTClassifier()
 
         # if init_mode == "zeros":
         #     #nn.init.normal_(self.fc1.weight, std=0.01)
@@ -59,22 +58,29 @@ class JointMNISTClassifier(nn.Module):
         #label = F.relu(self.fc1(label))
         #label = F.relu(self.fc11(label))
 
-        image = F.relu(self.conv1(image))
-        image = F.max_pool2d(image, kernel_size=2)
-        image = F.relu(self.conv2(image))
-        image = F.max_pool2d(image, kernel_size=2)
-        image = image.view(-1, 64 * 7 * 7)
+        # image = F.relu(self.conv1(image))
+        # image = F.max_pool2d(image, kernel_size=2)
+        # image = F.relu(self.conv2(image))
+        # image = F.max_pool2d(image, kernel_size=2)
+        # image = image.view(-1, 64 * 7 * 7)
+        # image = F.relu(self.fc2(image))
+        # image = F.relu(self.fc4(image))
 
-        joint_embedding = torch.cat((image, label), dim=1)
-        joint_embedding = F.relu(self.fc2(joint_embedding))
-        mu = F.relu(self.fcmu(joint_embedding))
-        logvar = F.relu(self.fclogvar(joint_embedding))
+        # join_embedding = torch.dot(image, )
+        # joint_embedding = torch.cat((image, label), dim=1)
+        # joint_embedding = F.relu(self.fc2(joint_embedding))
+        # mu = F.relu(self.fcmu(joint_embedding))
+        # logvar = F.relu(self.fclogvar(joint_embedding))
 
-        z = self.reparameterize(mu, logvar)
+        # z = self.reparameterize(mu, logvar)
 
-        joint_embedding = F.relu(self.fc4(z))
-        joint_embedding = F.sigmoid(self.fc5(joint_embedding))
-        return joint_embedding, mu, logvar
+        image = self.classifier(image)
+        joint_embedding = torch.bmm(image.unsqueeze(1), label.unsqueeze(2))
+        joint_embedding = joint_embedding.view(-1, 1)
+
+        #joint_embedding = F.relu(self.fc4(joint_embedding))
+        #joint_embedding = F.sigmoid(self.fc5(joint_embedding))
+        return joint_embedding, torch.Tensor([0]), torch.Tensor([0])#, mu, logvar
     
 
     def predict(self, image, n_iterations: int, learning_rate: float) -> torch.Tensor:

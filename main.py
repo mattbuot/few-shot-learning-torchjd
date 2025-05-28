@@ -44,7 +44,7 @@ def main():
     N_TRAINING_SAMPLES = 20
     USE_JD = [
               #False,
-              False,
+              True,
               ]
     LEARNING_RATE = [
         0.1, 
@@ -53,7 +53,7 @@ def main():
         #0.04, 
         #0.05
     ]
-    MSE_WEIGHT, L1_WEIGHT, KLD_WEIGHT = (1, 1, 1)
+    MSE_WEIGHT, L1_WEIGHT, L2_WEIGHT, KLD_WEIGHT = (1, 0, 0, 0)
 
     i = 0
     for use_jd in USE_JD:
@@ -69,6 +69,7 @@ def main():
                 use_jd=use_jd,
                 learning_rate=learning_rate,
                 l1_weight=L1_WEIGHT,
+                l2_weight=L2_WEIGHT,
                 mse_weight=MSE_WEIGHT,
                 kld_weight=KLD_WEIGHT,
             )
@@ -82,6 +83,7 @@ def run_experiment(
         use_jd: bool,
         learning_rate: float,
         l1_weight: float,
+        l2_weight: float,
         mse_weight: float,
         kld_weight: float,
         ) -> None:
@@ -90,8 +92,10 @@ def run_experiment(
     model = JointMNISTClassifier(init_mode=None)#"zeros") #MNISTClassifier()
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
     criterion = RegularizedLoss(l1_weight=l1_weight,
+                                l2_weight=l2_weight,
                                 mse_weight=mse_weight,
                                 kld_weight=kld_weight,
+                                n_counterfactuals=9,
                                 ) #torch.nn.CrossEntropyLoss(reduction="none")
     aggregator = UPGrad() if use_jd else Mean()
 
@@ -147,8 +151,7 @@ def run_experiment(
                 optimizer.zero_grad()
 
                 ohe_labels = torch.nn.functional.one_hot(label, num_classes=10).float()
-                output, mu, logvar = model((image, ohe_labels))
-                losses, mse_loss, l1_loss, kld_loss = criterion(model=model, model_output=output, mu=mu, logvar=logvar)
+                losses, mse_loss, l1_loss, kld_loss = criterion(model=model, model_input=(image, ohe_labels))
                 loss = losses.mean()
                 train_loss += loss.item()
                 train_mse_loss += mse_loss.mean().item()
@@ -188,8 +191,7 @@ def run_experiment(
 
                     image, target = input
                     ohe_labels = torch.nn.functional.one_hot(target, num_classes=10).float()
-                    output, mu, logvar = model((image, ohe_labels))
-                    validation_mse_loss += criterion(model=model, model_output=output, mu=mu, logvar=logvar)[1].mean().item()
+                    validation_mse_loss += criterion(model=model, model_input=(image, ohe_labels))[1].mean().item()
 
 
                 validation_mse_loss /= len(validation_dataloader)
